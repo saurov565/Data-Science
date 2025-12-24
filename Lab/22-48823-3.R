@@ -1,182 +1,168 @@
-x <- 4
-if (x >3 ) {
-  print("x is greater than 3")
-}
+#List of required packages
+packages <- c("tidyverse", "readr", "stringr", "janitor",
+              "tidytext", "SnowballC", "wordcloud", "topicmodels")
 
-x <- 6
-if (x > 5) {
-  print("x is greater than 5")
-} else {
-  print("x is 5 or less")
-}
-
-score <- 85
-if (score >= 90) {
-  print("Grade A+")
-} else if (score >= 85) {
-  print("Grade A")
-} else if (score >= 80){
-  print("Grade B+")
-} else if (score >= 70) {
-  print("Grade C")
-} else {
-  print("Grade F")
-}
-
-for (i in 1:7) {
-  print(paste("Iteration", i))
-}
-
-#repeat Loop (with break)
-i <- 1
-repeat {
-  print(i)
-  i <- i + 1
-  if (i > 6) break
-}
-
-#next Statement (skip to next iteration)
-for (i in 1:8) {
-  if (i == 4) next
-  print(i)
-}
-
-#break Statement (exit the loop)
-for (i in 1:10) {
-  if (i == 8) break
-  print(i)
-}
-
-#mean()
-numbers <- c(5, 15, 10, 20, 25)
-mean(numbers)
-sum(numbers)
-length(numbers)
-
-#round()
-pi_val <- 3.14159
-round(pi_val, 4)  
-
-paste("Hello", "World")
-
-#Simple function to add two numbers
-add_numbers <- function(a, b) {
-  return(a + b)
-}
-add_numbers(7, 3)
-
-#Function to check if a number is even
-is_even <- function(x) {
-  if (x %% 2 == 0) {
-    return(TRUE)
-  } else {
-    return(FALSE)
+# Install any packages that are not already installed
+installed_packages <- rownames(installed.packages())
+for (pkg in packages) {
+  if (!(pkg %in% installed_packages)) {
+    install.packages(pkg, dependencies = TRUE)
   }
-}
-is_even(5)
-
-#Function with default parameter
-greet <- function(name = "World") {
-  paste("Hello", name)
-}
-greet() 
-greet("Abir")
-
-#Anonymous (Lambda) Function with sapply()
-numbers <- 2:8
-squared <- sapply(numbers, function(x) x^2)
-print(squared)
-
-#Reading a CSV File
-data <- read.csv("/Users/abulbasharsaurov/Downloads/employee_dataset.csv")
-head(data)
-
-#Reading a Text File (tab-delimited)
-data <- read.table("/Users/abulbasharsaurov/Downloads/employee_dataset_ordered.txt", header = TRUE, sep = "\t")
-head(data)
-
-#Reading Data from a URL
-url <- "https://raw.githubusercontent.com/datasciencedojo/datasets/master/titanic.csv"
-data <- read.csv(url)
-head(data)
-
-#Exercise 1
-score <- 75
-if (score >= 90){
-  print("Excellent")
-} else if (score >= 75){
-  print("Good")
-} else if(score >= 50){
-  print("Pass")
-} else{
-  print("Fail")
+  library(pkg, character.only = TRUE)
 }
 
-#Exercise 2
-numbers <- 1:10
-squares <- c()
-for(num in numbers){
-  squares <- c(squares, num^2)
-}
-print(squares)
+#Read CSV File
+csv_path <- "/Users/abulbasharsaurov/Desktop/Bangladesh.csv"
 
-#Exercise 3
-count <- 1
-while(count < 20){
-  if(count %% 2== 0){
-    print(count)
-  }
-  count <- count+1
+TEXT_COL <- "content"
+
+raw <- read_csv(csv_path, locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+
+# If the specified TEXT_COL is not present, try to guess a plausible text column
+if (!TEXT_COL %in% names(raw)) {
+  candidates <- names(raw)[map_lgl(raw, ~ is.character(.x) || is.factor(.x))]
+  TEXT_COL <- candidates[which.max(sapply(raw[candidates],
+      function(x) mean(nchar(as.character(x)), na.rm = TRUE)))]
+  message("Guessed text column: ", TEXT_COL)
 }
 
-#Exercise 4
-multiply <- function(a, b){
-  product <- a * b
-  return(product)
+df <- raw %>%
+  mutate(doc_id = row_number(),
+         text   = as.character(.data[[TEXT_COL]])) %>%
+  select(doc_id, everything())
+
+# Normalize encoding (helps for non-Latin scripts)
+df$text <- iconv(df$text, from = "", to = "UTF-8")
+
+# Basic checks
+cat("Rows:", nrow(df), "\n")
+
+cat("NAs in text:", sum(is.na(df$text)), "\n")
+
+# Drop NA/blank and exact duplicate texts
+df <- df %>%
+  filter(!is.na(text)) %>%
+  mutate(text = str_squish(text)) %>%
+  filter(text != "") %>%
+  distinct(text, .keep_all = TRUE)
+
+# Show a sample
+df %>% select(doc_id, !!TEXT_COL := text) %>% head(5)
+
+#Clean Text
+#Define Cleaning Function
+clean_text <- function(x) {
+  x %>%
+    str_replace_all("https?://\\S+|www\\.[^\\s]+", " ") %>%  # Remove URLs
+    str_replace_all("@\\w+|#\\w+", " ") %>%                 # Remove mentions/hashtags
+    str_replace_all("[^\\p{L}\\p{N}\\s']", " ") %>%         # Keep letters, numbers, space
+    str_to_lower() %>%                                      # Convert to lowercase
+    str_squish()                                            # Remove extra spaces
 }
-result <- multiply(5,7)
-print(result)
 
-#Exercise 5
-calculate_stats <- function(numbers){
-  mean_val <- mean(numbers)
-  median_val <- median(numbers)
-  sd_val <- sd(numbers)
-  
-  return(list(
-    Mean = mean_val,
-    Median = median_val,
-    Standard_Deviation = sd_val
-  ))
-}
-value <- c(5,10,15,20,25)
-result <- calculate_stats(value)
-print(result)
+#Apply Cleaning
+df <- df %>% 
+  mutate(text_clean = clean_text(text))
 
-#Exercise 6
-grade_result <- function(score) {
-  if (score >= 90) {
-    print("Grade: A")
-  } else if (score >= 75) {
-    print("Grade: B")
-  } else if (score >= 50) {
-    print("Grade: C")
-  } else {
-    print("Grade: F")
-  }
-}
-grade_result(95)
-grade_result(80)
-grade_result(60)
-grade_result(40)
+#Tokenize and Remove Stop Words
+data(stop_words)
 
-#Exercise 7
-data <- read.csv("/Users/abulbasharsaurov/Downloads/students.csv")
-head(data, 5)
-str(data)
+tokens <- df %>%
+  unnest_tokens(word, text_clean, token = "words") %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(nchar(word) >= 3)  # Remove very short words (1-2 letters)
 
+# Preview
+head(tokens)
 
+#Stemming or Lemmatization (Optional)
+tokens <- tokens %>%
+  mutate(stem = SnowballC::wordStem(word, language = "en"))
 
+tokens %>% select(doc_id, word, stem) %>% head(10)
 
+#Word Frequency
+# Count frequency of full words
+word_freq <- tokens %>%
+  count(word, sort = TRUE)
 
+# Preview top 20 words
+head(word_freq, 20)
 
+#Word Frequency
+# Select top 20 words
+top_n <- 20
+
+p <- word_freq %>%
+  slice_max(n, n = top_n) %>%
+  ggplot(aes(x = reorder(word, n), y = n)) +   # Changed 'stem' to 'word'
+  geom_col(fill = "steelblue") +               # Added color for better visibility
+  coord_flip() +
+  labs(title = paste("Top", top_n, "words (by frequency)"),
+       x = "Word", y = "Count") +
+  theme_minimal()
+
+print(p)
+
+# Save image
+ggplot2::ggsave("top_words_bar.png", p, width = 7, height = 5, dpi = 300)
+
+#Word Frequency
+#Word cloud
+# Prepare data for Word Cloud
+wc_df <- word_freq %>% filter(n > 1)
+
+# Save as PNG
+png("wordcloud.png", width = 1200, height = 900, res = 150)
+par(mar = c(1,1,1,1))
+
+wordcloud(words = wc_df$word,          # Changed 'stem' to 'word'
+          freq = wc_df$n, 
+          max.words = 200, 
+          random.order = FALSE,
+          colors = brewer.pal(8, "Dark2")) # Added colors for better visuals
+
+dev.off()
+
+# Display in RStudio plot viewer
+wordcloud(words = wc_df$word, 
+          freq = wc_df$n, 
+          max.words = 200, 
+          random.order = FALSE,
+          colors = brewer.pal(8, "Dark2"))
+
+# Calculate TF-IDF
+tfidf <- tokens %>%
+  count(doc_id, word, sort = FALSE) %>%      # Changed 'stem' to 'word'
+  bind_tf_idf(term = word, document = doc_id, n = n) %>%
+  arrange(desc(tf_idf))
+
+# Create Document-Term Matrix (DTM)
+dtm_tfidf <- tfidf %>%
+  cast_dtm(document = doc_id, term = word, value = tf_idf)
+
+# Display DTM details
+print(dtm_tfidf)
+
+#Raw counts
+dtm_counts <- tokens %>% count(doc_id, stem) %>% cast_dtm(doc_id, stem, n)
+
+# Run LDA Topic Model
+k <- 3
+lda_model <- LDA(dtm_tfidf, k = k, control = list(seed = 1234))
+
+# Extract Top Terms per Topic
+topic_terms <- tidy(lda_model, matrix = "beta") %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+print(topic_terms)
+
+#Save Outputs
+write_csv(df,        "cleaned_text.csv")
+write_csv(word_freq, "top_words.csv")
+write_csv(tfidf,     "tfidf_by_doc.csv")
+
+cat("All files saved successfully.\n")
